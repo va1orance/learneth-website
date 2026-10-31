@@ -38,7 +38,7 @@ class SiteTests(unittest.TestCase):
         self.assertEqual(len(self.doc.ids), len(set(self.doc.ids)))
         self.assertEqual(len(self.doc.headings), 1)
     def test_demo_elements(self):
-        for value in ("choices", "response", "reset"):
+        for value in ("sample-form", "sample-answer", "lesson-top", "response", "reset"):
             self.assertIn(value, self.doc.ids)
         self.assertIn('aria-live="polite"', (ROOT / "index.html").read_text())
     def test_package_private(self):

@@ -1,35 +1,40 @@
 "use strict";
-const choices = document.querySelector("#choices");
+const form = document.querySelector("#sample-form");
+const answer = document.querySelector("#sample-answer");
 const response = document.querySelector("#response");
 const reset = document.querySelector("#reset");
-function showAnswer(correct) {
-  choices.hidden = true;
-  response.replaceChildren();
+form.addEventListener("submit", event => {
+  event.preventDefault();
+  const text = answer.value.trim();
+  if (!text) { answer.focus(); return; }
   const quote = document.createElement("blockquote");
   quote.className = "learner";
-  quote.textContent = correct ? "No—their speeds match, but their directions differ." : "Yes—both are travelling at 5 m/s.";
+  const speaker = document.createElement("span");
+  speaker.className = "speaker";
+  speaker.textContent = "YOU · PREVIEW RESPONSE";
+  const paragraph = document.createElement("p");
+  paragraph.textContent = text;
+  quote.append(speaker, paragraph);
   const feedback = document.createElement("div");
   feedback.className = "feedback";
+  const label = document.createElement("span");
+  label.className = "feedback-label";
+  label.textContent = "↳ A SCRIPTED TEACHING NOTE · NOT A GRADE";
   const heading = document.createElement("h4");
-  heading.textContent = correct ? "Exactly. Direction is the distinction." : "Not quite. You compared their speeds.";
+  heading.textContent = "Look at what changes—not just the speedometer.";
   const explanation = document.createElement("p");
-  explanation.textContent = correct ? "You separated the magnitude from the direction. Their speeds are equal, but their velocities point in opposite directions. Next we can ask what happens when a direction changes." : "The 5 m/s tells us how fast each cyclist moves. Velocity also includes direction, so opposite directions mean different velocities. Let’s check that distinction with a smaller question.";
-  feedback.append(heading, explanation);
-  if (!correct) {
-    const followup = document.createElement("p");
-    followup.textContent = "A cyclist turns around without changing speed. Has their velocity changed?";
-    feedback.append(followup);
-  }
-  response.append(quote, feedback);
+  explanation.textContent = "On a circular track, the car’s direction keeps changing. Its velocity changes even at constant speed, so it is accelerating. A live Learneth session would respond to your particular reasoning; this preview adds the same example note for everyone.";
+  feedback.append(label, heading, explanation);
+  response.replaceChildren(quote, feedback);
+  form.hidden = true;
   reset.hidden = false;
-}
-choices.addEventListener("click", event => {
-  const button = event.target.closest("button[data-answer]");
-  if (button) showAnswer(button.dataset.answer === "correct");
+  reset.focus({preventScroll:true});
+  response.scrollIntoView({behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth", block:"nearest"});
 });
 reset.addEventListener("click", () => {
   response.replaceChildren();
-  choices.hidden = false;
+  form.hidden = false;
   reset.hidden = true;
-  choices.querySelector("button").focus();
+  answer.value = "";
+  answer.focus();
 });
