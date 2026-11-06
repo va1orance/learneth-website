@@ -8,7 +8,7 @@ const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
  await page.locator('#preview').scrollIntoViewIfNeeded();
  await page.screenshot({path:require('path').join(__dirname,'desktop.png')});
  const check=async(name,fn)=>{if(!await fn())throw Error(name);console.log('PASS '+name)};
- await check('dark background',()=>page.evaluate(()=>getComputedStyle(document.body).backgroundColor==='rgb(20, 22, 26)'));
+ await check('dark background',()=>page.evaluate(()=>getComputedStyle(document.body).backgroundColor==='rgb(25, 25, 24)'));
  await check('document has scrollable history',()=>page.locator('.doc-scroll').evaluate(e=>e.scrollHeight>e.clientHeight));
  await check('plan collapsed initially',()=>page.locator('.plan').evaluate(e=>!e.open));
  await page.locator('.plan summary').click();await check('plan expands',()=>page.locator('.plan').evaluate(e=>e.open));
