@@ -1,20 +1,23 @@
-# Learneth website
+# Learneth public demo
 
-Local-only website foundation, separate from the SilverBullet plug. No remote is configured and nothing is publicly deployed.
+A standalone static website with an interactive, scripted example of the Learneth learning document. It is not a live AI tutor or the full Learneth/SilverBullet application.
 
-## Preview
+Public site: https://valorance.net/learneth/
 
-Run `npm run dev` (or `python3 -m http.server 4173 --bind 127.0.0.1`) in this directory, then visit http://127.0.0.1:4173.
+## Privacy and cost
 
-## Structure
+No backend, authentication, analytics, cookies, storage, model calls, external assets, or API keys. Text entered in the demo stays in the current browser document and disappears on reset/reload. Feedback is a fixed teaching note, not automated assessment. Do not put private application data or credentials in this repository.
 
-- `index.html`: product introduction, interactive scripted lesson preview, getting started, and limitations.
-- `assets/styles.css`: responsive layout and design tokens.
-- `assets/site.js`: accessible lesson-preview interaction. No model calls.
-- `tests/check_site.py`: dependency-free structure and local-reference checks.
+## Run and test
 
-Run `npm test` to check the site. No build step, package install, tracking, external fonts, credentials, or backend required. Static files can be hosted later under a subpath as well as a domain root.
+Run `npm test` for static checks. Run `npm run dev` and open http://127.0.0.1:4173. For optional browser checks, install Playwright and Chromium in your development environment, then run `SITE_URL=http://127.0.0.1:4173 node tests/browser-check.cjs`. An existing installation may be selected using PLAYWRIGHT_MODULE and PLAYWRIGHT_BROWSERS_PATH.
 
-## Scope
+## Deployment
 
-This is a draft product site, not the tutor itself. The preview is explicitly scripted. Install directions describe the existing plug build; there is no public download or public app link yet. PDF import is not advertised as shipped. Handwriting remains experimental/future work. No license has been selected.
+The information site lives at https://valorance.net/learneth/ and the interactive demo at https://valorance.net/learneth/demo/. This repository is the source of truth. Publish its web assets into the existing valorance-website repository under learneth/; do not add a CNAME here or change the root website CNAME. DNS maps hostnames, not URL paths: no Cloudflare DNS changes are needed for this deployment. The current GitHub Pages site serves the paths using its existing domain and HTTPS. No private instance or home-network port is exposed.
+
+Run `python3 tools/export_site.py /path/to/valorance-checkout/learneth` to export only public runtime assets and license notices, then review and commit that directory in the destination repository. Tests and development files are not published to the website. The export refuses to overwrite an existing destination to avoid silently deleting files.
+
+## License
+
+PolyForm Noncommercial 1.0.0: source-available, not OSI open source. See LICENSE, NOTICE, and LICENSING.md for scope, alternatives, and upstream exclusions. This license applies to this website/demo, not the private application.
