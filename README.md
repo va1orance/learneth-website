@@ -22,4 +22,4 @@ Run `python3 tools/export_site.py NEW_DESTINATION` to export public assets and l
 
 ## License
 
-PolyForm Noncommercial 1.0.0: source-available, not OSI open source. See LICENSE, NOTICE and LICENSING.md for scope and upstream exclusions. This applies to the website/demo, not the private application.
+GNU AGPL-3.0-only: open source, including commercial use, with network copyleft. See LICENSE, NOTICE and LICENSING.md for scope and upstream exclusions. This applies to the website/demo, not the private application.

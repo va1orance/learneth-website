@@ -6,5 +6,5 @@
     "dev": "python3 -m http.server 4173 --bind 127.0.0.1",
     "test": "python3 -m unittest discover -s tests -p '*.py'"
   },
-  "license": "PolyForm-Noncommercial-1.0.0"
+  "license": "AGPL-3.0-only"
 }
