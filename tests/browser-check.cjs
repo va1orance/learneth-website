@@ -19,6 +19,7 @@ const path=require('path');
  });
  await page.goto(root);
  await check('homepage embeds scrollable learning history',()=>page.locator('.doc-scroll').evaluate(e=>e.scrollHeight>e.clientHeight));
+ await check('physics figures loaded and accessible',()=>page.locator('.physics-figure img').evaluateAll(images=>images.length===2&&images.every(img=>img.complete&&img.naturalWidth>0&&img.alt.length>40)));
  await page.locator('.plan summary').click();await check('plan expands',()=>page.locator('.plan').evaluate(e=>e.open));
  await page.locator('#sample-answer').fill('<img src=x onerror="window.pwned=1">');await page.locator('#sample-form button').click();
  await check('scripted feedback remains honest and text-safe',()=>page.locator('#response').innerText().then(t=>t.includes('NOT A GRADE')));
