@@ -25,7 +25,7 @@ const path=require('path');
  await check('scripted feedback remains honest and text-safe',()=>page.locator('#response').innerText().then(t=>t.includes('NOT A GRADE')));
  await page.locator('#reset').click();await check('scripted reset',()=>page.locator('#sample-answer').inputValue().then(v=>v===''));
  await page.setViewportSize({width:1440,height:1100});await page.screenshot({path:path.join(__dirname,'home-desktop.png'),fullPage:true});
- await page.locator('.hero .button').click();await check('live demo separate path',()=>page.url()===root+'demo/');
+ await page.locator('nav a[href="demo/"]').click();await page.locator('#live-choice').click();await check('live demo separate path',()=>page.url()===root+'demo/');
  await check('no pre-consent provider requests',()=>requests.length===0);
  await page.locator('#material-next').click();await check('empty material rejected',()=>page.locator('[data-step="0"]').isVisible());
  await page.locator('#material').fill('First line');await page.locator('#material').press('End');await page.locator('#material').press('Enter');
@@ -73,7 +73,7 @@ const path=require('path');
  await page.reload();await check('reload clears session and key',()=>page.evaluate(()=>document.querySelector('#session').hidden&&document.querySelector('#api-key').value===''&&document.querySelector('#history').childElementCount===0));
  await check('no cookies or web storage',()=>page.evaluate(async()=>localStorage.length===0&&sessionStorage.length===0&&document.cookie===''&&(await indexedDB.databases()).length===0&&(await caches.keys()).length===0));
  for(const route of [root,root+'demo/']){
-  await page.goto(route);
+  await page.goto(route);if(route.endsWith('demo/'))await page.locator('#live-choice').click();
   for(const width of [390,768,1440]){await page.setViewportSize({width,height:900});await check('no horizontal overflow '+route+' '+width,()=>page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));}
  }
  await setup();await page.setViewportSize({width:1440,height:1100});await page.screenshot({path:path.join(__dirname,'desktop.png'),fullPage:true});await page.setViewportSize({width:390,height:844});await page.screenshot({path:path.join(__dirname,'mobile.png'),fullPage:true});
