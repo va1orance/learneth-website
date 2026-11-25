@@ -20,7 +20,7 @@ class Export(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertTrue((dest / 'demo/index.html').is_file())
             self.assertTrue((dest / 'LICENSE').is_file())
-            for asset in ('typewriter.css', 'live.css', 'live.js', 'site.js'):
+            for asset in ('typewriter.css', 'live.css', 'live.js', 'render.js', 'site.js'):
                 self.assertTrue((dest / 'assets' / asset).is_file(), asset)
             self.assertFalse((dest / 'assets/styles.css').exists())
             self.assertFalse((dest / 'worker').exists())

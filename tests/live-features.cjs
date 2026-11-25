@@ -42,6 +42,19 @@ const { getRootUrl, launchChromium, stubWorker } = require('./pw-helper.cjs');
         });
         return;
       }
+      if (responseMode === 'rich-sse') {
+        const sse = [
+          'data: ' + JSON.stringify({ choices: [{ delta: { reasoning: 'Checking force decomposition...' } }] }),
+          'data: ' + JSON.stringify({ choices: [{ delta: { content: '### Forces breakdown\n\n```mermaid\ngraph TD\nA[Weight] --> B[Parallel mg sin theta]\nA --> C[Normal]\n```\n\n```learneth-chart\n{"title":"Sample Scores","type":"bar","labels":["Try 1","Try 2"],"values":[40,85]}\n```\n\n| Term | Meaning |\n| --- | --- |\n| N | Normal force |' } }] }),
+          'data: [DONE]',
+        ].join('\n\n') + '\n\n';
+        await route.fulfill({
+          status: 200,
+          headers: { 'access-control-allow-origin': '*', 'content-type': 'text/event-stream' },
+          body: sse,
+        });
+        return;
+      }
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -186,42 +199,28 @@ const { getRootUrl, launchChromium, stubWorker } = require('./pw-helper.cjs');
     console.log('PASS follow-up Retry turn, switch-to-free recovery, and key-redacted .md download');
     if (process.env.SLICE === 'endpoint') return;
 
-    assert.equal(await page.locator('#image-form').isHidden(), true);
-    assert.equal(await page.locator('#image-request').isDisabled(), true);
+    assert.equal(await page.locator('#image-form').count(), 0);
+    assert.match(await page.locator('#session').innerText(), /Image generation is disabled/);
 
-    responseMode = 'ok';
+    responseMode = 'rich-sse';
     await page.locator('#clear').click();
-    await page.locator('#material').fill('A vector points east.');
+    await page.locator('#material').fill('Forces on an inclined plane.');
     await page.locator('#material-next').click();
     await page.locator('#goal-next').click();
-    await page.locator('#image-model').fill('gpt-image-1');
+    assert.match(await page.locator('#image-disabled-note').innerText(), /Image generation is disabled/);
     await page.locator('#base-url').fill('https://compatible.example/v1');
     await page.locator('#api-key').fill('sk-test-only');
     await page.locator('#consent').check();
     await page.locator('#onboarding button[type=submit]').click();
     await page.waitForFunction(() => document.querySelector('#notice').textContent.startsWith('Response added'));
-    assert.equal(await page.locator('#image-form').isVisible(), true);
-
-    await page.locator('#image-prompt').fill('An eastward arrow');
-    await page.locator('#image-consent').check();
-    const rasterFixture = await page.evaluate(() => {
-      const c = document.createElement('canvas'); c.width = 8; c.height = 8;
-      c.getContext('2d').fillRect(0, 0, 8, 8);
-      return c.toDataURL('image/png').split(',')[1];
-    });
-    await page.route('https://compatible.example/v1/images/generations', async route => {
-      requests.push({ url: route.request().url(), body: route.request().postDataJSON(), headers: route.request().headers() });
-      await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ data: [{ b64_json: rasterFixture }] }) });
-    });
-    await page.locator('#image-request').click();
-    await page.waitForFunction(() => document.querySelector('#history img')?.naturalWidth > 0, {}, { timeout: 5000 }).catch(async e => {
-      console.error(await page.locator('#notice').innerText()); throw e;
-    });
-    assert.equal(requests.at(-1).headers.authorization, 'Bearer sk-test-only');
-    assert.equal(requests.at(-1).body.model, 'gpt-image-1');
-    assert.equal(requests.at(-1).body.prompt, 'An eastward arrow');
-    assert.equal(await page.locator('#history img').getAttribute('src').then(s => s.startsWith('blob:')), true);
-    console.log('PASS explicit consented image request with shared key and safe local image');
+    assert.equal(await page.locator('#history details.demo-thinking').count(), 1);
+    assert.equal(await page.locator('#history details.demo-thinking').evaluate(d => !d.open), true);
+    await page.locator('#history details.demo-thinking summary').click();
+    assert.match(await page.locator('#history .demo-thinking-body').innerText(), /Checking force decomposition/);
+    assert.equal(await page.locator('#history .demo-diagram svg').count(), 2);
+    assert.equal(await page.locator('#history table.demo-table').count(), 1);
+    assert.equal(await page.locator('#history script').count(), 0);
+    console.log('PASS SSE streaming thinking dropdown, Mermaid flowchart, bar chart, and Markdown table rendering');
 
     // Verify in-memory Dark/Light toggle and responsive layout at 390/768/1440.
     await page.locator('.theme-btn[data-theme-choice="light"]').click();

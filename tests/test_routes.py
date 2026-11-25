@@ -34,13 +34,15 @@ class Routes(unittest.TestCase):
         self.assertEqual([a for a, _ in demo_ins.connect_urls], ['data-free-demo-url'])
 
     def test_no_persistence_or_unsafe_html(self):
-        code=(ROOT/'assets/live.js').read_text()
-        for forbidden in ('localStorage', 'sessionStorage', 'indexedDB', 'innerHTML', 'sendBeacon', 'console.', 'document.cookie'):
-            self.assertNotIn(forbidden, code)
+        for rel in ('assets/live.js', 'assets/render.js'):
+            code = (ROOT / rel).read_text()
+            for forbidden in ('localStorage', 'sessionStorage', 'indexedDB', 'innerHTML', 'sendBeacon', 'console.', 'document.cookie'):
+                self.assertNotIn(forbidden, code, f'{rel} must not use {forbidden}')
+        code = (ROOT / 'assets/live.js').read_text()
         self.assertIn("redirect: 'error'", code)
         self.assertIn("credentials: 'omit'", code)
         self.assertIn("data_collection: 'deny'", code)
-        self.assertIn('if (key) text = text.split(key)', code)
+        self.assertIn('redact(', code)
 
     def test_homepage_security_headers_and_visibility_pause(self):
         info = (ROOT/'index.html').read_text()
