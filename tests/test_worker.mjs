@@ -38,12 +38,13 @@ function postReq(body, { origin = "https://valorance.net", ip = "203.0.113.10", 
 
 test("only allows :free or openrouter/free models", () => {
   assert.equal(isAllowedFreeModel("openrouter/free"), true);
-  assert.equal(isAllowedFreeModel("google/gemma-3-27b-it:free"), true);
+  assert.equal(isAllowedFreeModel("nvidia/nemotron-3.5-lightning:free"), true);
+  assert.equal(isAllowedFreeModel("google/gemma-4-26b-a4b-it:free"), true);
   assert.equal(isAllowedFreeModel("openai/gpt-4.1-mini"), false);
   assert.equal(isAllowedFreeModel("anthropic/claude-sonnet-4"), false);
 });
 
-test("rejects disallowed origins and non-free model config with security headers", async () => {
+test("rejects disallowed origins and non-free model/fallback config with security headers", async () => {
   resetRateLimits();
   const badOrigin = await handleRequest(postReq({ answer: "Direction changes" }, { origin: "https://evil.example" }), ENV);
   assert.equal(badOrigin.status, 403);
@@ -60,6 +61,12 @@ test("rejects disallowed origins and non-free model config with security headers
     { ...ENV, FREE_MODEL: "openai/gpt-4.1-mini" },
   );
   assert.equal(badModel.status, 500);
+
+  const badFallback = await handleRequest(
+    postReq({ answer: "Direction changes" }, { ip: "203.0.113.12" }),
+    { ...ENV, FREE_MODEL: "nvidia/nemotron-3.5-lightning:free", FREE_FALLBACK_MODELS: "google/gemma-4-26b-a4b-it:free,openai/gpt-4.1-mini" },
+  );
+  assert.equal(badFallback.status, 500);
 });
 
 test("returns sanitized tutor reply and redacts key before slicing across cap", async () => {
@@ -319,4 +326,53 @@ test("prunes expired ipHits entries and enforces hard map cap", async () => {
     Date.now = realNow;
     resetRateLimits();
   }
+});
+
+test("retries without reasoning on 400 and falls back across allowed :free models on 502/empty/429", async () => {
+  resetRateLimits();
+  const calls = [];
+  const retry400Fetch = async (_url, init) => {
+    const body = JSON.parse(init.body);
+    calls.push(body);
+    if (calls.length === 1) {
+      assert.deepEqual(body.reasoning, { enabled: false });
+      return new Response(JSON.stringify({ error: { message: "reasoning param rejected" } }), { status: 400 });
+    }
+    assert.equal("reasoning" in body, false);
+    return new Response(JSON.stringify({ model: body.model, choices: [{ message: { content: "Recovered without reasoning." } }] }), { status: 200 });
+  };
+  const envFallback = {
+    ...ENV,
+    FREE_MODEL: "nvidia/nemotron-3.5-lightning:free",
+    FREE_FALLBACK_MODELS: "google/gemma-4-26b-a4b-it:free,openrouter/free",
+  };
+  const res400 = await handleRequest(postReq({ answer: "Direction changes." }, { ip: "203.0.113.50" }), envFallback, retry400Fetch);
+  assert.equal(res400.status, 200);
+  const data400 = await res400.json();
+  assert.equal(data400.model, "nvidia/nemotron-3.5-lightning:free");
+  assert.equal(calls.length, 2);
+
+  const fallbackCalls = [];
+  const cascadeFetch = async (_url, init) => {
+    const body = JSON.parse(init.body);
+    fallbackCalls.push(body);
+    if (body.model === "nvidia/nemotron-3.5-lightning:free") {
+      return new Response(JSON.stringify({ model: body.model, choices: [{ message: { content: "   " } }] }), { status: 200 });
+    }
+    if (body.model === "google/gemma-4-26b-a4b-it:free") {
+      assert.equal("reasoning" in body, false);
+      return new Response("upstream down", { status: 502 });
+    }
+    return new Response(JSON.stringify({ model: "openrouter/free", choices: [{ message: { content: "Served by fallback model." } }] }), { status: 200 });
+  };
+  const resCascade = await handleRequest(postReq({ answer: "Direction changes." }, { ip: "203.0.113.51" }), envFallback, cascadeFetch);
+  assert.equal(resCascade.status, 200);
+  const dataCascade = await resCascade.json();
+  assert.equal(dataCascade.body, "Served by fallback model.");
+  assert.equal(dataCascade.model, "openrouter/free");
+  assert.deepEqual(fallbackCalls.map(c => c.model), [
+    "nvidia/nemotron-3.5-lightning:free",
+    "google/gemma-4-26b-a4b-it:free",
+    "openrouter/free",
+  ]);
 });

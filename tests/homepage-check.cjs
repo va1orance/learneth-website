@@ -206,3 +206,49 @@ test('only the first hero Try it out action is removed, mobile CTA stays visible
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
   });
 });
+
+test('deliberate scroll waits past initial blank entry before revealing, and Kinematics example holds scroll at bottom while generating', async () => {
+  await visit(async page => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.waitForFunction(() => document.querySelector('#page-thinking.is-done') !== null);
+
+    // Scroll only far enough that #preview barely enters the bottom ~15% of the viewport.
+    const shallowY = await page.evaluate(() => {
+      const rect = document.querySelector('#preview').getBoundingClientRect();
+      return Math.max(0, window.scrollY + rect.top - window.innerHeight * 0.85);
+    });
+    await page.evaluate(y => window.scrollTo(0, y), shallowY);
+    await page.waitForTimeout(350);
+    assert.equal(await page.locator('#preview').evaluate(e => e.classList.contains('stream-pending')), true);
+
+    // Now scroll deeper past the threshold so #preview drafts and begins streaming Kinematics.
+    const deepY = await page.evaluate(() => {
+      const rect = document.querySelector('#preview').getBoundingClientRect();
+      return Math.max(0, window.scrollY + rect.top - window.innerHeight * 0.45);
+    });
+    await page.evaluate(y => window.scrollTo(0, y), deepY);
+    await page.waitForFunction(() => document.querySelector('#preview .section-think.is-thinking') !== null);
+    await page.waitForFunction(() => {
+      const s = document.querySelector('.doc-scroll');
+      const skip = document.querySelector('#skip-script');
+      return s && skip && !skip.hidden && s.scrollHeight > s.clientHeight + 40;
+    });
+
+    // While generating and overflowing, .doc-scroll stays locked to the bottom.
+    const distBefore = await page.locator('.doc-scroll').evaluate(s => Math.abs((s.scrollHeight - s.clientHeight) - s.scrollTop));
+    assert.ok(distBefore <= 10, `expected bottom lock while generating, got offset ${distBefore}`);
+    await page.waitForTimeout(350);
+    const distAfter = await page.locator('.doc-scroll').evaluate(s => Math.abs((s.scrollHeight - s.clientHeight) - s.scrollTop));
+    assert.ok(distAfter <= 10, `expected sustained bottom lock, got offset ${distAfter}`);
+
+    // Scrolling up inside .doc-scroll disengages bottom lock cleanly.
+    await page.locator('.doc-scroll').hover();
+    await page.mouse.wheel(0, -240);
+    await page.waitForTimeout(300);
+    const scrolledUpDist = await page.locator('.doc-scroll').evaluate(s => (s.scrollHeight - s.clientHeight) - s.scrollTop);
+    assert.ok(scrolledUpDist > 30, `expected manual scroll up to stay off bottom, got ${scrolledUpDist}`);
+
+    await page.locator('#skip-script').click();
+    assert.equal(await page.locator('#skip-script').isHidden(), true);
+  });
+});

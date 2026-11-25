@@ -27,7 +27,7 @@ npx wrangler deploy --config worker/wrangler.toml
 
 ## Guardrails
 - Only accepts `POST /example` (or `/`) and `POST /demo` from `ALLOWED_ORIGINS` (`403`/`404` include `Cache-Control: no-store` and `X-Content-Type-Options: nosniff`).
-- Refuses any `FREE_MODEL` that is not `openrouter/free` or ending in `:free`.
+- Refuses any `FREE_MODEL` or `FREE_FALLBACK_MODELS` entry that is not `openrouter/free` or ending in `:free` (defaults primary `FREE_MODEL` to `nvidia/nemotron-3.5-lightning:free` with up to 4 `:free` candidate routes, retrying once without `reasoning` on HTTP `400`).
 - Stream-bounds incoming request bodies (`2,048` bytes on `/example`; `57,344` bytes on `/demo`, returning `400` on unreadable request streams) and upstream JSON responses (`131,072` bytes) before `JSON.parse`, rejects upstream redirects (`redirect: 'manual'`), and redacts `OPENROUTER_FREE_KEY` before slicing output.
 - **`POST /example`**: hardcodes the circular-track Kinematics acceleration system prompt, caps input at `600` chars, requests `420` `max_tokens`, caps output at `1,200` chars, and enforces `5` requests / 10 min per IP.
 - **`POST /demo`**: enforces the Learneth Socratic system prompt (stripping control characters and framing custom `goal` preferences as untrusted data), requires `user` turn 0 (pinned up to `16,000` chars so dense JSON-escaped 12k study material + `starting_point` is never truncated or evicted) plus up to `12` recent follow-up turns (6 `assistant`/`user` pairs, preserving strict role alternation across `> 13` turns, `4,000` chars each; `MAX_DEMO_TURNS = 13`), requests `700` `max_tokens`, caps output at `4,000` chars, and enforces `12` requests / 10 min per IP.

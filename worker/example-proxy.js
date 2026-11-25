@@ -68,6 +68,30 @@ export function isAllowedFreeModel(model) {
   return typeof model === "string" && (model === "openrouter/free" || /^[a-z0-9._/-]+:free$/i.test(model));
 }
 
+const DEFAULT_FREE_MODEL = "nvidia/nemotron-3.5-lightning:free";
+
+function resolveCandidateModels(env) {
+  const primary = (env?.FREE_MODEL || DEFAULT_FREE_MODEL).trim();
+  const rawFallbacks = typeof env?.FREE_FALLBACK_MODELS === "string" ? env.FREE_FALLBACK_MODELS : "";
+  const fallbacks = rawFallbacks
+    .split(",")
+    .map(s => s.trim())
+    .filter(Boolean);
+  const all = [primary, ...fallbacks];
+  for (const candidate of all) {
+    if (!isAllowedFreeModel(candidate)) return null;
+  }
+  const unique = [];
+  for (const candidate of all) {
+    if (!unique.includes(candidate)) unique.push(candidate);
+  }
+  return unique.slice(0, 4);
+}
+
+function supportsDisableReasoning(model) {
+  return !/^google\/gemma-/i.test(model);
+}
+
 function allowedOrigins(env) {
   const raw = env?.ALLOWED_ORIGINS || "https://valorance.net,https://www.valorance.net";
   return raw
@@ -287,82 +311,114 @@ export async function handleRequest(request, env, fetchImpl = fetch) {
     return json({ ok: false, error: "Demo proxy is not configured" }, 503, headers);
   }
 
-  const model = env?.FREE_MODEL || "openrouter/free";
-  if (!isAllowedFreeModel(model)) {
+  const candidateModels = resolveCandidateModels(env);
+  if (!candidateModels) {
     return json({ ok: false, error: "Configured model must be a :free OpenRouter route" }, 500, headers);
   }
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 20000);
   try {
-    const upstream = await fetchImpl("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      redirect: "manual",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${apiKey}`,
-        "HTTP-Referer": origin,
-        "X-Title": isDemoRoute ? "Learneth Free Live Demo" : "Learneth Homepage Example",
-      },
-      body: JSON.stringify({
-        model,
-        max_tokens: maxTokens,
-        temperature: 0.4,
-        reasoning: { effort: "none", exclude: true },
-        messages: upstreamMessages,
-      }),
-      signal: controller.signal,
-    });
+    let had429 = false;
+    let sawNonRateLimitFailure = false;
+    let last429RetryAfter = "60";
+    let lastFailureError = "Upstream demo model unavailable";
 
-    if (upstream.status >= 300 && upstream.status < 400) {
-      return json({ ok: false, error: "Unexpected upstream redirect" }, 502, headers);
+    for (const candidate of candidateModels) {
+      const disableModes = supportsDisableReasoning(candidate) ? [true, false] : [false];
+      for (let modeIdx = 0; modeIdx < disableModes.length; modeIdx++) {
+        const useDisableReasoning = disableModes[modeIdx];
+        const payload = {
+          model: candidate,
+          max_tokens: maxTokens,
+          temperature: 0.4,
+          messages: upstreamMessages,
+        };
+        if (useDisableReasoning) {
+          payload.reasoning = { enabled: false };
+        }
+
+        const upstream = await fetchImpl("https://openrouter.ai/api/v1/chat/completions", {
+          method: "POST",
+          redirect: "manual",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${apiKey}`,
+            "HTTP-Referer": origin,
+            "X-Title": isDemoRoute ? "Learneth Free Live Demo" : "Learneth Homepage Example",
+          },
+          body: JSON.stringify(payload),
+          signal: controller.signal,
+        });
+
+        if (upstream.status >= 300 && upstream.status < 400) {
+          return json({ ok: false, error: "Unexpected upstream redirect" }, 502, headers);
+        }
+        if (upstream.status === 429) {
+          had429 = true;
+          const upRetry = Number.parseInt(upstream.headers.get("Retry-After") || "", 10);
+          last429RetryAfter = Number.isFinite(upRetry) && upRetry > 0 && upRetry <= 600 ? String(upRetry) : "60";
+          break;
+        }
+        if (!upstream.ok) {
+          const errBody = await readBodyBounded(upstream, 4096).catch(() => ({ tooLarge: false, text: "" }));
+          const errSnippet = errBody.text ? redactAndCap(errBody.text, apiKey, 200) : "";
+          console.error("OpenRouter upstream error:", candidate, upstream.status, errSnippet);
+          if (upstream.status === 400 && useDisableReasoning && modeIdx + 1 < disableModes.length) {
+            continue;
+          }
+          sawNonRateLimitFailure = true;
+          lastFailureError = "Upstream demo model unavailable";
+          break;
+        }
+
+        const upBody = await readBodyBounded(upstream, MAX_UPSTREAM_BYTES);
+        if (upBody.tooLarge) {
+          return json({ ok: false, error: "Upstream response exceeded size limit" }, 502, headers);
+        }
+        let data;
+        try {
+          data = JSON.parse(upBody.text);
+        } catch {
+          sawNonRateLimitFailure = true;
+          lastFailureError = "Invalid upstream response";
+          break;
+        }
+
+        const rawContent = extractMessageContent(data);
+        if (!rawContent.trim()) {
+          console.error("OpenRouter empty content from model:", redactAndCap(String(data?.model || candidate), apiKey, MAX_MODEL_CHARS));
+          sawNonRateLimitFailure = true;
+          lastFailureError = "Empty response from demo model";
+          break;
+        }
+        const cap = isDemoRoute ? 4000 : 1200;
+        const content = redactAndCap(rawContent, apiKey, cap);
+        const rawModel = typeof data?.model === "string" && data.model.trim() ? data.model.trim() : candidate;
+        const actualModel = redactAndCap(rawModel, apiKey, MAX_MODEL_CHARS);
+        return json(
+          {
+            ok: true,
+            heading: "Tutor feedback on your reasoning.",
+            body: content,
+            model: actualModel,
+          },
+          200,
+          headers,
+        );
+      }
     }
-    if (upstream.status === 429) {
-      const upRetry = Number.parseInt(upstream.headers.get("Retry-After") || "", 10);
-      const retryAfter = Number.isFinite(upRetry) && upRetry > 0 && upRetry <= 600 ? String(upRetry) : "60";
+
+    if (had429 && !sawNonRateLimitFailure) {
       return json(
         { ok: false, error: "Free demo model is temporarily busy" },
         429,
-        { ...headers, "Retry-After": retryAfter },
+        { ...headers, "Retry-After": last429RetryAfter },
       );
     }
-    if (!upstream.ok) {
-      console.error("OpenRouter upstream error:", upstream.status);
-      return json({ ok: false, error: "Upstream demo model unavailable" }, 502, headers);
-    }
-
-    const upBody = await readBodyBounded(upstream, MAX_UPSTREAM_BYTES);
-    if (upBody.tooLarge) {
-      return json({ ok: false, error: "Upstream response exceeded size limit" }, 502, headers);
-    }
-    let data;
-    try {
-      data = JSON.parse(upBody.text);
-    } catch {
-      return json({ ok: false, error: "Invalid upstream response" }, 502, headers);
-    }
-
-    const rawContent = extractMessageContent(data);
-    if (!rawContent.trim()) {
-      console.error("OpenRouter empty content from model:", data?.model || model);
-      return json({ ok: false, error: "Empty response from demo model" }, 502, headers);
-    }
-    const cap = isDemoRoute ? 4000 : 1200;
-    const content = redactAndCap(rawContent, apiKey, cap);
-    const rawModel = typeof data?.model === "string" && data.model.trim() ? data.model.trim() : model;
-    const actualModel = redactAndCap(rawModel, apiKey, MAX_MODEL_CHARS);
-    return json(
-      {
-        ok: true,
-        heading: "Tutor feedback on your reasoning.",
-        body: content,
-        model: actualModel,
-      },
-      200,
-      headers,
-    );
+    return json({ ok: false, error: lastFailureError }, 502, headers);
   } catch (err) {
-    console.error("Worker fetch exception:", err && err.message ? String(err.message) : "unknown");
+    console.error("Worker fetch exception:", err && err.message ? redactAndCap(String(err.message), apiKey, 200) : "unknown");
     return json({ ok: false, error: "Demo request timed out or failed" }, 502, headers);
   } finally {
     clearTimeout(timer);

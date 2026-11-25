@@ -6,4 +6,5 @@ preview_urls = false
 
 [vars]
 ALLOWED_ORIGINS = "https://valorance.net,https://www.valorance.net"
-FREE_MODEL = "openrouter/free"
+FREE_MODEL = "nvidia/nemotron-3.5-lightning:free"
+FREE_FALLBACK_MODELS = "google/gemma-4-26b-a4b-it:free,nvidia/nemotron-3.5-super-vl:free,openrouter/free"
