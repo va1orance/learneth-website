@@ -1,3 +1,5 @@
 tests/*.png
 __pycache__/
 *.pyc
+.wrangler/
+worker/.wrangler/

@@ -1,9 +1,10 @@
-const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'/root/valorance-preview-tools/node_modules/playwright');
-const assert=require('node:assert/strict');
-const root=process.env.SITE_URL||'http://127.0.0.1:4175/';
-(async()=>{const browser=await chromium.launch({args:['--no-sandbox']});try{
+const assert = require('node:assert/strict');
+const { getRootUrl, launchChromium, stubWorker } = require('./pw-helper.cjs');
+const root=getRootUrl();
+(async()=>{const browser=await launchChromium();try{
 const page=await browser.newPage();const requests=[],errors=[];
 page.on('pageerror',e=>errors.push(e.message));
+await stubWorker(page);
 await page.route('https://**/*',async route=>{
  if(new URL(route.request().url()).origin===new URL(root).origin)return route.continue();
  requests.push({url:route.request().url(),headers:route.request().headers(),body:route.request().postDataJSON()});

@@ -1,0 +1,9 @@
+name = "learneth-example-proxy"
+main = "example-proxy.js"
+compatibility_date = "2026-11-01"
+workers_dev = true
+preview_urls = false
+
+[vars]
+ALLOWED_ORIGINS = "https://valorance.net,https://www.valorance.net"
+FREE_MODEL = "openrouter/free"

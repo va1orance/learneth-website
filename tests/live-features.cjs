@@ -1,57 +1,250 @@
-const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'/root/valorance-preview-tools/node_modules/playwright');
-const assert=require('node:assert/strict');
-(async()=>{const browser=await chromium.launch({args:['--no-sandbox']});try{
-const page=await browser.newPage(); const requests=[];
-const site=(process.env.SITE_URL||'http://127.0.0.1:4175/').replace(/\/?$/,'/');
-await page.route('https://**/*',async route=>{const r=route.request();if(new URL(r.url()).origin===new URL(site).origin)return route.continue();requests.push({url:r.url(),body:r.postDataJSON(),headers:r.headers()});await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({choices:[{message:{content:'Safe teaching response'}}]})});});
-await page.goto((process.env.SITE_URL||'http://127.0.0.1:4175/').replace(/\/?$/,'/')+'demo/');
-assert.equal(await page.locator('h1').innerText(),'Welcome to Learneth!');
-assert.equal(await page.locator('#welcome').evaluate(e=>e.open),true);
-await page.locator('#welcome-close').focus(); await page.keyboard.press('Shift+Tab');assert.equal(await page.evaluate(()=>document.activeElement.id),'example-choice');
-await page.keyboard.press('Escape');await page.waitForFunction(()=>document.activeElement.id==='reopen-welcome');assert.equal(await page.locator('#welcome').evaluate(e=>e.open),false);
-assert.equal(await page.evaluate(()=>document.activeElement.id),'reopen-welcome');
-await page.locator('#reopen-welcome').click();await page.locator('#live-choice').click();assert.equal(await page.locator('#material').isVisible(),true);
-await page.waitForTimeout(40);assert.equal(await page.evaluate(()=>document.activeElement.matches('[data-step="0"] h2')),true);
-assert.equal(await page.locator('#example-choice').getAttribute('href'),'../?example=fullscreen#preview');
-assert.equal(requests.length,0);console.log('PASS accessible welcome, dismiss/reopen, live and example paths');
-if(process.env.SLICE==='welcome')return;
-await page.locator('#upload').setInputFiles({name:'notes.md',mimeType:'text/markdown',buffer:Buffer.from('Velocity includes direction.')});
-await page.waitForFunction(()=>document.querySelector('#material').value==='Velocity includes direction.');
-await page.locator('#upload').setInputFiles({name:'bad.pdf',mimeType:'application/pdf',buffer:Buffer.from('%PDF invalid')});
-await page.waitForFunction(()=>document.querySelector('#notice').textContent.includes('Unsupported'));
-assert.equal(await page.locator('#material').inputValue(),'Velocity includes direction.');
-await page.locator('#upload').setInputFiles({name:'large.txt',mimeType:'text/plain',buffer:Buffer.alloc(65537,65)});
-await page.waitForFunction(()=>document.querySelector('#notice').textContent.includes('64 KiB'));
-console.log('PASS local Markdown upload, unsupported PDF rejection and file limit');
-if(process.env.SLICE==='upload')return;
-await page.locator('#material-next').click();await page.locator('input[value="only"]').check();await page.locator('#goal-next').click();
-await page.locator('#base-url').fill('https://compatible.example/v1');await page.locator('#api-key').fill('sk-test-only');
-await page.locator('#consent').check();await page.locator('#onboarding button[type=submit]').click();
-await page.waitForFunction(()=>document.querySelector('#notice').textContent.startsWith('Response added'));
-assert.equal(requests[0].url,'https://compatible.example/v1/chat/completions');
-assert.match(requests[0].body.messages[0].content,/only.*material/i);
-assert.match(requests[0].body.messages[0].content,/untrusted/i);
-assert.equal(requests[0].headers.authorization,'Bearer sk-test-only');
-assert.equal(JSON.stringify(requests[0].body).includes('sk-test-only'),false);
-assert.equal(requests.length,1);console.log('PASS configurable consented endpoint and material-only teaching policy');
-if(process.env.SLICE==='endpoint')return;
-assert.equal(await page.locator('#image-request').isDisabled(),true);
-await page.locator('#clear').click();await page.locator('#material').fill('A vector points east.');await page.locator('#material-next').click();await page.locator('#goal-next').click();
-await page.locator('#image-model').fill('gpt-image-1');await page.locator('#base-url').fill('https://compatible.example/v1');await page.locator('#api-key').fill('sk-test-only');await page.locator('#consent').check();await page.locator('#onboarding button[type=submit]').click();await page.waitForFunction(()=>document.querySelector('#notice').textContent.startsWith('Response added'));
-assert.equal(requests.length,2);await page.locator('#image-prompt').fill('An eastward arrow');await page.locator('#image-consent').check();
-const rasterFixture=await page.evaluate(()=>{const c=document.createElement('canvas');c.width=8;c.height=8;c.getContext('2d').fillRect(0,0,8,8);return c.toDataURL('image/png').split(',')[1]});
-await page.route('https://compatible.example/v1/images/generations',async route=>{requests.push({url:route.request().url(),body:route.request().postDataJSON(),headers:route.request().headers()});await route.fulfill({contentType:'application/json',body:JSON.stringify({data:[{b64_json:rasterFixture}]})});});
-await page.locator('#image-request').click();await page.waitForFunction(()=>document.querySelector('#history img')?.naturalWidth>0,{},{timeout:5000}).catch(async e=>{console.error(await page.locator('#notice').innerText());throw e});
-assert.equal(requests.length,3);assert.equal(requests[2].headers.authorization,'Bearer sk-test-only');assert.equal(requests[2].body.model,'gpt-image-1');assert.equal(requests[2].body.prompt,'An eastward arrow');assert.equal(await page.locator('#history img').getAttribute('src').then(s=>s.startsWith('blob:')),true);
-console.log('PASS explicit consented image request with shared key and safe local image');
-await page.locator('#clear').click();await page.locator('#reopen-welcome').click();
-for(const width of [390,768,1440]){await page.setViewportSize({width,height:900});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);assert.equal(await page.locator('#welcome').evaluate(e=>e.getBoundingClientRect().width<=innerWidth-20),true)}
-assert.equal(await page.locator('#welcome').evaluate(e=>getComputedStyle(e).color),await page.locator('body').evaluate(e=>getComputedStyle(e).color));
-console.log('PASS responsive modal with inherited theme');
-assert.equal(await page.locator('#live-choice').evaluate(e=>e.scrollWidth<=e.clientWidth),true);
-assert.equal(await page.locator('#welcome-close').evaluate(e=>e.getBoundingClientRect().right>document.querySelector('#welcome').getBoundingClientRect().right-65),true);
-await page.setViewportSize({width:390,height:844});await page.screenshot({path:require('path').join(__dirname,'welcome-mobile.png')});
-await page.locator('#live-choice').click();await page.locator('#material').fill('Notes');await page.locator('#material-next').click();
-assert.equal(await page.locator('input[type=radio]').first().evaluate(e=>e.getBoundingClientRect().width<30),true);
-await page.screenshot({path:require('path').join(__dirname,'teaching-mobile.png')});
-}finally{await browser.close()}})().catch(e=>{console.error(e);process.exit(1)});
+const assert = require('node:assert/strict');
+const { getRootUrl, launchChromium, stubWorker } = require('./pw-helper.cjs');
+
+(async () => {
+  const browser = await launchChromium();
+  try {
+    const page = await browser.newPage();
+    const requests = [];
+    let responseMode = 'ok';
+    const site = getRootUrl();
+    await stubWorker(page, async (route, req) => {
+      requests.push({ url: req.url(), body: req.postDataJSON(), headers: req.headers() });
+      await route.fulfill({
+        status: 200,
+        headers: { 'access-control-allow-origin': '*', 'content-type': 'application/json' },
+        body: JSON.stringify({ ok: true, model: 'google/gemma-3-27b-it:free', body: 'Free demo follow-up reply.' }),
+      });
+    });
+    await page.route('https://**/*', async route => {
+      const r = route.request();
+      if (new URL(r.url()).origin === new URL(site).origin) return route.continue();
+      if (r.url().startsWith('https://learneth-example-proxy.va1orance.workers.dev')) return route.fallback();
+      requests.push({ url: r.url(), body: r.postDataJSON(), headers: r.headers() });
+      if (responseMode === 'slow') {
+        await new Promise(r => setTimeout(r, 800));
+      }
+      if (responseMode === '401') {
+        await route.fulfill({
+          status: 401,
+          contentType: 'application/json',
+          body: JSON.stringify({ error: { message: 'bad key' } }),
+        });
+        return;
+      }
+      if (responseMode === 'array') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            choices: [{ message: { content: ['Array chunk one. ', { text: 'Array chunk two.' }] } }],
+          }),
+        });
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ choices: [{ message: { content: 'Safe teaching response' } }] }),
+      });
+    });
+
+    await page.goto(site + 'demo/');
+    assert.equal(await page.locator('h1').innerText(), 'Try Learneth');
+    assert.equal(await page.locator('#welcome').evaluate(e => e.open), true);
+    assert.equal(await page.evaluate(() => [...document.querySelectorAll('[data-step="1"] input, [data-step="2"] input')].every(i => i.disabled)), true);
+
+    await page.locator('#welcome-close').focus();
+    await page.keyboard.press('Shift+Tab');
+    assert.equal(await page.evaluate(() => document.activeElement.id), 'example-choice');
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(() => document.activeElement.id === 'reopen-welcome');
+    assert.equal(await page.locator('#welcome').evaluate(e => e.open), false);
+    assert.equal(await page.evaluate(() => document.activeElement.id), 'reopen-welcome');
+
+    await page.locator('#reopen-welcome').click();
+    await page.locator('#live-choice').click();
+    assert.equal(await page.locator('#material').isVisible(), true);
+    await page.waitForTimeout(40);
+    assert.equal(await page.evaluate(() => document.activeElement.matches('[data-step="0"] h2')), true);
+    assert.equal(await page.locator('#example-choice').getAttribute('href'), '../?example=fullscreen#preview');
+    assert.equal(requests.length, 0);
+    console.log('PASS accessible welcome, dismiss/reopen, boot step disable, live and example paths');
+    if (process.env.SLICE === 'welcome') return;
+
+    await page.locator('#upload').setInputFiles({ name: 'notes.md', mimeType: 'text/markdown', buffer: Buffer.from('Velocity includes direction.') });
+    await page.waitForFunction(() => document.querySelector('#material').value === 'Velocity includes direction.');
+    await page.locator('#material').fill('');
+    await page.locator('#upload').setInputFiles({ name: 'notes.md', mimeType: 'text/markdown', buffer: Buffer.from('Velocity includes direction.') });
+    await page.waitForFunction(() => document.querySelector('#material').value === 'Velocity includes direction.');
+    await page.locator('#upload').setInputFiles({ name: 'bad.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF invalid') });
+    await page.waitForFunction(() => document.querySelector('#notice').textContent.includes('Unsupported'));
+    assert.equal(await page.locator('#material').inputValue(), 'Velocity includes direction.');
+    await page.locator('#upload').setInputFiles({ name: 'large.txt', mimeType: 'text/plain', buffer: Buffer.alloc(65537, 65) });
+    await page.waitForFunction(() => document.querySelector('#notice').textContent.includes('64 KiB'));
+    console.log('PASS local Markdown upload, same-file re-upload, unsupported PDF rejection and file limit');
+    if (process.env.SLICE === 'upload') return;
+
+    await page.locator('#material-next').click();
+    await page.locator('input[value="custom"]').check();
+    await page.locator('#goal-next').click();
+    assert.equal(await page.locator('[data-step="1"]').isVisible(), true);
+    await page.locator('input[value="only"]').check();
+    await page.locator('#goal-next').click();
+    assert.equal(await page.locator('[data-step="2"]').isVisible(), true);
+
+    // Turn-0 failure disables follow-up form until an assistant reply exists; Turn-0 Stop focuses #retry-turn.
+    responseMode = '401';
+    await page.locator('#base-url').fill('https://compatible.example/v1');
+    await page.locator('#api-key').fill('sk-bad-key');
+    await page.locator('#consent').check();
+    await page.locator('#onboarding button[type=submit]').click();
+    await page.waitForFunction(() => document.querySelector('#notice').textContent.startsWith('Key rejected'));
+    assert.equal(await page.locator('#recovery-bar').isVisible(), true);
+    assert.equal(await page.locator('#answer').isDisabled(), true);
+    assert.equal(await page.locator('#answer-form button').isDisabled(), true);
+
+    responseMode = 'slow';
+    const slowTurn0 = page.waitForRequest(r => r.url() === 'https://compatible.example/v1/chat/completions');
+    await page.locator('#retry-turn').click();
+    await slowTurn0;
+    await page.locator('#cancel').click();
+    await page.waitForFunction(() => document.querySelector('#notice').textContent.startsWith('Request stopped.'));
+    assert.equal(await page.evaluate(() => document.activeElement.id), 'retry-turn');
+    assert.equal(await page.locator('#recovery-bar').isVisible(), true);
+    assert.equal(await page.locator('#answer').isDisabled(), true);
+
+    await page.locator('#edit-model').click();
+    assert.equal(await page.locator('[data-step="2"]').isVisible(), true);
+    assert.equal(await page.locator('#api-key').inputValue(), '');
+    assert.equal(await page.locator('#consent').isChecked(), false);
+
+    responseMode = 'array';
+    await page.locator('#api-key').fill('sk-test-only');
+    await page.locator('#consent').check();
+    await page.locator('#onboarding button[type=submit]').click();
+    await page.waitForFunction(() => document.querySelector('#notice').textContent.startsWith('Response added'));
+    assert.equal(await page.locator('#answer').isEnabled(), true);
+    assert.equal(await page.locator('#history h3', { hasText: 'YOUR MATERIAL' }).count(), 1);
+    assert.match(await page.locator('#history').innerText(), /Array chunk one\. Array chunk two\./);
+    const turn0Req = requests.at(-1);
+    assert.equal(turn0Req.url, 'https://compatible.example/v1/chat/completions');
+    assert.match(turn0Req.body.messages[0].content, /only.*material/i);
+    assert.match(turn0Req.body.messages[0].content, /untrusted/i);
+    assert.equal(turn0Req.headers.authorization, 'Bearer sk-test-only');
+    assert.equal(JSON.stringify(turn0Req.body).includes('sk-test-only'), false);
+    console.log('PASS turn-0 non-destructive recovery, answer-guard, array message.content, and material-only policy');
+
+    // Follow-up failure + manual Retry turn does not duplicate or orphan user turns.
+    responseMode = '401';
+    await page.locator('#answer').fill('Follow-up reasoning.');
+    await page.locator('#answer-form button').click();
+    await page.waitForFunction(() => document.querySelector('#notice').textContent.startsWith('Key rejected'));
+    assert.equal(await page.locator('#recovery-bar').isVisible(), true);
+
+    responseMode = 'ok';
+    await page.locator('#retry-turn').click();
+    await page.waitForFunction(() => document.querySelector('#notice').textContent.startsWith('Response added'));
+    const sentMessages = requests.at(-1).body.messages;
+    assert.equal(sentMessages.filter(m => m.content === 'Follow-up reasoning.').length, 1);
+    assert.equal(await page.locator('#history h3', { hasText: /^YOU$/ }).count(), 1);
+
+    // Download .md export (key-redacted).
+    const downloadPromise = page.waitForEvent('download');
+    await page.locator('#download-md').click();
+    const download = await downloadPromise;
+    assert.equal(download.suggestedFilename(), 'learneth-session.md');
+    const mdStream = await download.createReadStream();
+    const chunks = [];
+    for await (const chunk of mdStream) chunks.push(chunk);
+    const mdText = Buffer.concat(chunks).toString('utf8');
+    assert.match(mdText, /# Learneth Session/);
+    assert.match(mdText, /Velocity includes direction\./);
+    assert.match(mdText, /Follow-up reasoning\./);
+    assert.equal(mdText.includes('sk-test-only'), false);
+    // Follow-up failure + Edit model / switch to Free mode + manual Retry turn.
+    responseMode = '401';
+    await page.locator('#answer').fill('Second follow-up reasoning.');
+    await page.locator('#answer-form button').click();
+    await page.waitForFunction(() => document.querySelector('#notice').textContent.startsWith('Key rejected'));
+    await page.locator('#edit-model').click();
+    assert.equal(await page.locator('[data-step="2"]').isVisible(), true);
+    await page.locator('input[name="provider-mode"][value="free"]').check();
+    assert.equal(await page.locator('#consent').isChecked(), false);
+    await page.locator('#consent').check();
+    await page.locator('#onboarding button[type=submit]').click();
+    await page.waitForFunction(() => document.querySelector('#notice').textContent.startsWith('Connection updated'));
+    assert.equal(await page.locator('#history h3', { hasText: 'YOUR MATERIAL' }).count(), 1);
+    assert.equal(await page.locator('#recovery-bar').isVisible(), true);
+    await page.locator('#retry-turn').click();
+    await page.waitForFunction(() => document.querySelector('#notice').textContent.startsWith('Response added'));
+    const freeReq = requests.at(-1);
+    assert.equal(freeReq.url, 'https://learneth-example-proxy.va1orance.workers.dev/demo');
+    assert.equal(freeReq.headers.authorization, undefined);
+    assert.equal(freeReq.body.messages.some(m => m.role === 'system'), false);
+    assert.match(await page.locator('#history').innerText(), /Free demo follow-up reply\./);
+    console.log('PASS follow-up Retry turn, switch-to-free recovery, and key-redacted .md download');
+    if (process.env.SLICE === 'endpoint') return;
+
+    assert.equal(await page.locator('#image-form').isHidden(), true);
+    assert.equal(await page.locator('#image-request').isDisabled(), true);
+
+    responseMode = 'ok';
+    await page.locator('#clear').click();
+    await page.locator('#material').fill('A vector points east.');
+    await page.locator('#material-next').click();
+    await page.locator('#goal-next').click();
+    await page.locator('#image-model').fill('gpt-image-1');
+    await page.locator('#base-url').fill('https://compatible.example/v1');
+    await page.locator('#api-key').fill('sk-test-only');
+    await page.locator('#consent').check();
+    await page.locator('#onboarding button[type=submit]').click();
+    await page.waitForFunction(() => document.querySelector('#notice').textContent.startsWith('Response added'));
+    assert.equal(await page.locator('#image-form').isVisible(), true);
+
+    await page.locator('#image-prompt').fill('An eastward arrow');
+    await page.locator('#image-consent').check();
+    const rasterFixture = await page.evaluate(() => {
+      const c = document.createElement('canvas'); c.width = 8; c.height = 8;
+      c.getContext('2d').fillRect(0, 0, 8, 8);
+      return c.toDataURL('image/png').split(',')[1];
+    });
+    await page.route('https://compatible.example/v1/images/generations', async route => {
+      requests.push({ url: route.request().url(), body: route.request().postDataJSON(), headers: route.request().headers() });
+      await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ data: [{ b64_json: rasterFixture }] }) });
+    });
+    await page.locator('#image-request').click();
+    await page.waitForFunction(() => document.querySelector('#history img')?.naturalWidth > 0, {}, { timeout: 5000 }).catch(async e => {
+      console.error(await page.locator('#notice').innerText()); throw e;
+    });
+    assert.equal(requests.at(-1).headers.authorization, 'Bearer sk-test-only');
+    assert.equal(requests.at(-1).body.model, 'gpt-image-1');
+    assert.equal(requests.at(-1).body.prompt, 'An eastward arrow');
+    assert.equal(await page.locator('#history img').getAttribute('src').then(s => s.startsWith('blob:')), true);
+    console.log('PASS explicit consented image request with shared key and safe local image');
+
+    // Verify in-memory Dark/Light toggle and responsive layout at 390/768/1440.
+    await page.locator('.theme-btn[data-theme-choice="light"]').click();
+    assert.equal(await page.evaluate(() => document.documentElement.getAttribute('data-theme')), 'light');
+    assert.equal(await page.evaluate(() => localStorage.length === 0 && sessionStorage.length === 0 && !location.search), true);
+
+    await page.locator('#clear').click();
+    await page.locator('#reopen-welcome').click();
+    for (const width of [390, 768, 1440]) {
+      await page.setViewportSize({ width, height: 900 });
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+      assert.equal(await page.locator('#welcome').evaluate(e => e.getBoundingClientRect().width <= innerWidth - 20), true);
+    }
+    assert.equal(await page.locator('#welcome').evaluate(e => getComputedStyle(e).color), await page.locator('body').evaluate(e => getComputedStyle(e).color));
+    console.log('PASS responsive modal with inherited theme');
+    assert.equal(await page.locator('#live-choice').evaluate(e => e.scrollWidth <= e.clientWidth), true);
+    assert.equal(await page.locator('#welcome-close').evaluate(e => e.getBoundingClientRect().right > document.querySelector('#welcome').getBoundingClientRect().right - 65), true);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.locator('#live-choice').click();
+    await page.locator('#material').fill('Notes');
+    await page.locator('#material-next').click();
+    assert.equal(await page.locator('input[type=radio]').first().evaluate(e => e.getBoundingClientRect().width < 30), true);
+  } finally {
+    await browser.close();
+  }
+})().catch(e => { console.error(e); process.exit(1); });
