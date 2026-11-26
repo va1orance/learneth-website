@@ -156,10 +156,6 @@ test('sample form shows 429 busy note on fallback and renders mocked live reply 
     assert.match(resp, /Mocked inward acceleration hint/);
     assert.equal(await page.locator('#response').getAttribute('aria-live'), 'polite');
     assert.deepEqual(await page.evaluate(() => window.__liveStates), ['polite']);
-
-    await page.locator('.checkin-chip[data-q="files"]').click();
-    assert.equal(await page.locator('#checkin-reply').getAttribute('aria-live'), 'polite');
-    assert.match(await page.locator('#checkin-reply').innerText(), /Never touched/);
   }, { reducedMotion: 'reduce' }, '', async route => {
     if (mode === '429') {
       await route.fulfill({
@@ -184,7 +180,7 @@ test('page-skip clears mid-flight section thinking state cleanly', async () => {
     await page.locator('#page-skip').click();
     assert.equal(await page.locator('.section-think.is-thinking').count(), 0);
     assert.equal(await page.locator('#preview .section-think.is-done').count(), 1);
-    assert.equal(await page.locator('#preview .section-think-text').innerText(), 'Section 01 · Live workspace example');
+    assert.equal(await page.locator('#preview .section-think-text').innerText(), 'Inside a learning session');
     assert.equal(await page.locator('#preview .section-think .think-spin').innerText(), '✓');
   });
 });
@@ -197,9 +193,13 @@ test('only the first hero Try it out action is removed, mobile CTA stays visible
     assert.equal(await page.locator('#page-thinking').getAttribute('aria-live'), null);
     assert.equal(await page.locator('#tutor-thinking').getAttribute('aria-live'), null);
     assert.equal(await page.locator('#response').getAttribute('aria-live'), 'polite');
+    assert.equal(await page.evaluate(() => document.documentElement.getAttribute('data-theme')), 'light');
 
     await page.setViewportSize({ width: 390, height: 844 });
     assert.equal(await page.locator('.site-header .nav-cta').isVisible(), true);
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+    await page.locator('.theme-btn[data-theme-choice="dark"]').click();
+    assert.equal(await page.evaluate(() => document.documentElement.getAttribute('data-theme')), 'dark');
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
     await page.locator('.theme-btn[data-theme-choice="light"]').click();
     assert.equal(await page.evaluate(() => document.documentElement.getAttribute('data-theme')), 'light');

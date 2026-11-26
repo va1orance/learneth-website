@@ -78,8 +78,7 @@ const { getRootUrl, launchChromium, stubWorker } = require('./pw-helper.cjs');
     await page.locator('#reopen-welcome').click();
     await page.locator('#live-choice').click();
     assert.equal(await page.locator('#material').isVisible(), true);
-    await page.waitForTimeout(40);
-    assert.equal(await page.evaluate(() => document.activeElement.matches('[data-step="0"] h2')), true);
+    await page.waitForFunction(() => document.activeElement.matches('[data-step="0"] h2'));
     assert.equal(await page.locator('#example-choice').getAttribute('href'), '../?example=fullscreen#preview');
     assert.equal(requests.length, 0);
     console.log('PASS accessible welcome, dismiss/reopen, boot step disable, live and example paths');
@@ -222,7 +221,10 @@ const { getRootUrl, launchChromium, stubWorker } = require('./pw-helper.cjs');
     assert.equal(await page.locator('#history script').count(), 0);
     console.log('PASS SSE streaming thinking dropdown, Mermaid flowchart, bar chart, and Markdown table rendering');
 
-    // Verify in-memory Dark/Light toggle and responsive layout at 390/768/1440.
+    // Verify in-memory Light/Dark toggle and responsive layout at 390/768/1440.
+    assert.equal(await page.evaluate(() => document.documentElement.getAttribute('data-theme')), 'light');
+    await page.locator('.theme-btn[data-theme-choice="dark"]').click();
+    assert.equal(await page.evaluate(() => document.documentElement.getAttribute('data-theme')), 'dark');
     await page.locator('.theme-btn[data-theme-choice="light"]').click();
     assert.equal(await page.evaluate(() => document.documentElement.getAttribute('data-theme')), 'light');
     assert.equal(await page.evaluate(() => localStorage.length === 0 && sessionStorage.length === 0 && !location.search), true);
