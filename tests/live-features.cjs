@@ -45,7 +45,46 @@ const { getRootUrl, launchChromium, stubWorker } = require('./pw-helper.cjs');
       if (responseMode === 'rich-sse') {
         const sse = [
           'data: ' + JSON.stringify({ choices: [{ delta: { reasoning: 'Checking force decomposition...' } }] }),
-          'data: ' + JSON.stringify({ choices: [{ delta: { content: '### Forces breakdown\n\n```mermaid\ngraph TD\nA[Weight] --> B[Parallel mg sin theta]\nA --> C[Normal]\n```\n\n```learneth-chart\n{"title":"Sample Scores","type":"bar","labels":["Try 1","Try 2"],"values":[40,85]}\n```\n\n| Term | Meaning |\n| --- | --- |\n| N | Normal force |' } }] }),
+          'data: ' + JSON.stringify({
+            choices: [{
+              delta: {
+                content: [
+                  '### Forces breakdown',
+                  '',
+                  'By Newton’s law $F = ma$ and slope component \\(mg\\sin\\theta\\), plans cost $5–$15 per month. Safe check: $\\text{<script>window.pwned=1</script>}$.',
+                  '',
+                  '$$a_c = \\frac{v^2}{r} + \\sqrt{x^2 + y^2}$$',
+                  '',
+                  '```mermaid',
+                  'graph TD',
+                  'A[Weight] --> B[Parallel mg sin theta]',
+                  'A --> C[Normal]',
+                  '```',
+                  '',
+                  '```learneth-chart',
+                  '{"title":"Velocity vs Time","type":"line","xLabel":"Time (s)","yLabel":"Speed (m/s)","labels":["0","1","2","3"],"series":[{"name":"Car A","data":[0,10,20,30]},{"name":"Car B","data":[5,12,18,24]}]}',
+                  '```',
+                  '',
+                  '```chartjs',
+                  '{"type":"doughnut","data":{"labels":["Kinetic","Potential","Heat"],"datasets":[{"label":"Energy","data":[50,35,15]}]},"options":{"plugins":{"title":{"text":"Energy Split"}}}}',
+                  '```',
+                  '',
+                  '```mermaid',
+                  'xychart-beta',
+                  '  title "Lab Trials"',
+                  '  x-axis [T1, T2, T3]',
+                  '  y-axis "Score" 0 --> 100',
+                  '  bar [45, 72, 91]',
+                  '  line [50, 75, 95]',
+                  '```',
+                  '',
+                  '| Term | Meaning |',
+                  '| --- | --- |',
+                  '| $N$ | Normal force |',
+                ].join('\n'),
+              },
+            }],
+          }),
           'data: [DONE]',
         ].join('\n\n') + '\n\n';
         await route.fulfill({
@@ -216,10 +255,17 @@ const { getRootUrl, launchChromium, stubWorker } = require('./pw-helper.cjs');
     assert.equal(await page.locator('#history details.demo-thinking').evaluate(d => !d.open), true);
     await page.locator('#history details.demo-thinking summary').click();
     assert.match(await page.locator('#history .demo-thinking-body').innerText(), /Checking force decomposition/);
-    assert.equal(await page.locator('#history .demo-diagram svg').count(), 2);
+    assert.ok(await page.locator('#history math').count() >= 5, 'renders inline and display MathML');
+    assert.equal(await page.locator('#history .demo-math-block math mfrac').count(), 1, 'renders LaTeX fraction');
+    assert.equal(await page.locator('#history .demo-math-block math msqrt').count(), 1, 'renders LaTeX sqrt');
+    assert.ok(await page.locator('#history math msup').count() >= 2, 'renders LaTeX superscripts');
+    assert.equal((await page.locator('#history').innerText()).includes('$5–$15'), true, 'preserves currency text');
+    assert.equal((await page.locator('#history').innerText()).includes('\\sin\\theta'), false, 'no raw inline LaTeX');
+    assert.equal(await page.locator('#history .demo-diagram svg').count(), 4, 'renders flowchart, multi-series line, chartjs donut, and mermaid xychart');
     assert.equal(await page.locator('#history table.demo-table').count(), 1);
     assert.equal(await page.locator('#history script').count(), 0);
-    console.log('PASS SSE streaming thinking dropdown, Mermaid flowchart, bar chart, and Markdown table rendering');
+    assert.equal(await page.evaluate(() => Boolean(window.pwned)), false);
+    console.log('PASS SSE streaming thinking dropdown, LaTeX MathML, Mermaid flowchart/xychart, learneth-chart, chartjs donut, and Markdown table rendering');
 
     // Verify in-memory Light/Dark toggle and responsive layout at 390/768/1440.
     assert.equal(await page.evaluate(() => document.documentElement.getAttribute('data-theme')), 'light');

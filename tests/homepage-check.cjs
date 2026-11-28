@@ -252,3 +252,32 @@ test('deliberate scroll waits past initial blank entry before revealing, and Kin
     assert.equal(await page.locator('#skip-script').isHidden(), true);
   });
 });
+
+test('scrolled section live-types heading with caret before revealing section body blocks', async () => {
+  await visit(async page => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.waitForFunction(() => document.querySelector('#page-thinking.is-done') !== null);
+
+    const targetY = await page.evaluate(() => {
+      const rect = document.querySelector('#approach').getBoundingClientRect();
+      return Math.max(0, window.scrollY + rect.top - window.innerHeight * 0.45);
+    });
+    await page.evaluate(y => window.scrollTo(0, y), targetY);
+
+    // Wait until #approach starts typing its h2 live (caret visible, .approach-grid still waiting).
+    await page.waitForFunction(() => {
+      const h2 = document.querySelector('#approach h2');
+      const grid = document.querySelector('#approach .approach-grid');
+      return h2 && h2.querySelector('.stream-caret') !== null && grid && grid.classList.contains('type-wait');
+    });
+
+    // Wait for typing to finish and the rest of the section (.approach-grid) to load in.
+    await page.waitForFunction(() => {
+      const h2 = document.querySelector('#approach h2');
+      const grid = document.querySelector('#approach .approach-grid');
+      return h2 && h2.querySelector('.stream-caret') === null &&
+        h2.textContent.includes('Keep the part where you figured it out.') &&
+        grid && !grid.classList.contains('type-wait');
+    });
+  });
+});
